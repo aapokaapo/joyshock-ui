@@ -1,6 +1,4 @@
 const socketPathInput = document.getElementById('socketPath');
-const mappingsElement = document.getElementById('mappings');
-const mappingTemplate = document.getElementById('mappingTemplate');
 const commandsPreview = document.getElementById('commandsPreview');
 const statusElement = document.getElementById('status');
 
@@ -11,6 +9,13 @@ const minPointElement = document.getElementById('minPoint');
 const maxPointElement = document.getElementById('maxPoint');
 const xMaxLabelElement = document.getElementById('xMaxLabel');
 const yMaxLabelElement = document.getElementById('yMaxLabel');
+
+const mappingLinesElement = document.getElementById('mappingLines');
+const mappingAnchorsElement = document.getElementById('mappingAnchors');
+const buttonCapsulesElement = document.getElementById('buttonCapsules');
+const mappingEditorTitleElement = document.getElementById('mappingEditorTitle');
+const mappingActionInputElement = document.getElementById('mappingActionInput');
+const mappingPresetGridElement = document.getElementById('mappingPresetGrid');
 
 const gyroFieldIds = [
   'minThreshold',
@@ -28,27 +33,10 @@ const curveState = {
   padding: 32,
 };
 
-function rowToCommand(row) {
-  const button = row.querySelector('.button-name').value.trim();
-  const action = row.querySelector('.button-action').value.trim();
-
-  if (!button || !action) {
-    return null;
-  }
-
-  return `${button} = ${action}`;
-}
-
-function rowToMapping(row) {
-  const button = row.querySelector('.button-name').value.trim();
-  const action = row.querySelector('.button-action').value.trim();
-
-  if (!button || !action) {
-    return null;
-  }
-
-  return { button, action };
-}
+const mappingUiState = {
+  mappingMap: {},
+  activeButton: null,
+};
 
 function gyroCommands() {
   const minThreshold = document.getElementById('minThreshold').value;
@@ -66,29 +54,18 @@ function gyroCommands() {
   ];
 }
 
-function buildCommands() {
-  const mappings = [...mappingsElement.querySelectorAll('.mapping-row')]
-    .map(rowToCommand)
-    .filter(Boolean);
+function buttonMappingCommands() {
+  return window.ButtonMappingModel
+    .serializeMappings(mappingUiState.mappingMap)
+    .map((mapping) => `${mapping.button} = ${mapping.action}`);
+}
 
-  return [...gyroCommands(), ...mappings];
+function buildCommands() {
+  return [...gyroCommands(), ...buttonMappingCommands()];
 }
 
 function renderCommands() {
   commandsPreview.value = buildCommands().join('\n');
-}
-
-function addMappingRow(button = '', action = '') {
-  const fragment = mappingTemplate.content.cloneNode(true);
-  const row = fragment.querySelector('.mapping-row');
-  row.querySelector('.button-name').value = button;
-  row.querySelector('.button-action').value = action;
-  row.querySelector('.remove-mapping').addEventListener('click', () => {
-    row.remove();
-    renderCommands();
-  });
-  row.addEventListener('input', renderCommands);
-  mappingsElement.appendChild(fragment);
 }
 
 function currentGyroState() {
@@ -103,9 +80,7 @@ function currentGyroState() {
 }
 
 function currentMappingsState() {
-  return [...mappingsElement.querySelectorAll('.mapping-row')]
-    .map(rowToMapping)
-    .filter(Boolean);
+  return window.ButtonMappingModel.serializeMappings(mappingUiState.mappingMap);
 }
 
 function collectCurrentConfig() {
@@ -125,16 +100,83 @@ function applyGyroState(gyro) {
   renderCurve();
 }
 
-function applyMappingsState(mappings) {
-  mappingsElement.innerHTML = '';
+function setMappingAction(buttonId, action) {
+  mappingUiState.mappingMap = window.ButtonMappingModel.setMapping(mappingUiState.mappingMap, buttonId, action);
+}
 
-  if (!Array.isArray(mappings) || mappings.length === 0) {
-    addMappingRow();
-    return;
+function selectMappingButton(buttonId) {
+  mappingUiState.activeButton = buttonId;
+  const action = mappingUiState.mappingMap[buttonId] || '';
+  mappingEditorTitleElement.textContent = `${buttonId} → ${window.ButtonMappingModel.formatActionLabel(action)}`;
+  mappingActionInputElement.value = action;
+  renderMappingLayout();
+}
+
+function renderMappingLines() {
+  mappingLinesElement.innerHTML = '';
+  mappingAnchorsElement.innerHTML = '';
+
+  for (const button of window.ButtonMappingModel.BUTTON_LAYOUT) {
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+    line.setAttribute('points', `${button.cap[0]},${button.cap[1]} ${button.anchor[0]},${button.anchor[1]}`);
+    line.setAttribute('class', button.id === mappingUiState.activeButton ? 'mapping-line active' : 'mapping-line');
+    mappingLinesElement.appendChild(line);
+
+    const anchor = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    anchor.setAttribute('cx', button.anchor[0]);
+    anchor.setAttribute('cy', button.anchor[1]);
+    anchor.setAttribute('r', '5');
+    anchor.setAttribute('class', button.id === mappingUiState.activeButton ? 'mapping-anchor active' : 'mapping-anchor');
+    mappingAnchorsElement.appendChild(anchor);
+  }
+}
+
+function renderButtonCapsules() {
+  buttonCapsulesElement.innerHTML = '';
+
+  for (const button of window.ButtonMappingModel.BUTTON_LAYOUT) {
+    const capsule = document.createElement('button');
+    capsule.type = 'button';
+    capsule.className = 'mapping-capsule';
+    if (mappingUiState.activeButton === button.id) {
+      capsule.classList.add('active');
+    }
+
+    const mapped = window.ButtonMappingModel.formatActionLabel(mappingUiState.mappingMap[button.id]);
+    if (mapped !== 'UNMAPPED') {
+      capsule.classList.add('mapped');
+    }
+
+    capsule.style.left = `${(button.cap[0] / window.ButtonMappingModel.STAGE.width) * 100}%`;
+    capsule.style.top = `${(button.cap[1] / window.ButtonMappingModel.STAGE.height) * 100}%`;
+
+    capsule.innerHTML = `<span class="source">${button.label}</span><span class="target">${mapped}</span>`;
+    capsule.addEventListener('click', () => {
+      selectMappingButton(button.id);
+      renderCommands();
+    });
+
+    buttonCapsulesElement.appendChild(capsule);
+  }
+}
+
+function applyMappingsState(mappings) {
+  mappingUiState.mappingMap = window.ButtonMappingModel.normalizeMappings(mappings);
+
+  if (!mappingUiState.activeButton || !window.ButtonMappingModel.BUTTON_IDS.has(mappingUiState.activeButton)) {
+    mappingUiState.activeButton = window.ButtonMappingModel.BUTTON_LAYOUT[0].id;
   }
 
-  for (const mapping of mappings) {
-    addMappingRow(mapping.button, mapping.action);
+  renderMappingLayout();
+}
+
+function renderMappingLayout() {
+  renderMappingLines();
+  renderButtonCapsules();
+
+  if (mappingUiState.activeButton) {
+    const action = mappingUiState.mappingMap[mappingUiState.activeButton] || '';
+    mappingEditorTitleElement.textContent = `${mappingUiState.activeButton} → ${window.ButtonMappingModel.formatActionLabel(action)}`;
   }
 }
 
@@ -261,6 +303,26 @@ function bindCurveEditor() {
   gyroCurveElement.addEventListener('pointerleave', stopCurveDrag);
 }
 
+function initMappingPresets() {
+  mappingPresetGridElement.innerHTML = '';
+  for (const action of window.ButtonMappingModel.ACTION_PRESETS) {
+    const presetButton = document.createElement('button');
+    presetButton.type = 'button';
+    presetButton.className = 'mapping-preset';
+    presetButton.textContent = action;
+    presetButton.addEventListener('click', () => {
+      if (!mappingUiState.activeButton) {
+        return;
+      }
+      setMappingAction(mappingUiState.activeButton, action);
+      mappingActionInputElement.value = action;
+      renderMappingLayout();
+      renderCommands();
+    });
+    mappingPresetGridElement.appendChild(presetButton);
+  }
+}
+
 async function loadDefaults() {
   const response = await fetch('/api/config');
   const config = await response.json();
@@ -319,8 +381,22 @@ async function applyConfig() {
   statusElement.textContent = `Applied ${result.sent} commands to ${result.socketPath}`;
 }
 
-document.getElementById('addMapping').addEventListener('click', () => {
-  addMappingRow();
+mappingActionInputElement.addEventListener('input', () => {
+  if (!mappingUiState.activeButton) {
+    return;
+  }
+  setMappingAction(mappingUiState.activeButton, mappingActionInputElement.value);
+  renderMappingLayout();
+  renderCommands();
+});
+
+document.getElementById('clearMapping').addEventListener('click', () => {
+  if (!mappingUiState.activeButton) {
+    return;
+  }
+  setMappingAction(mappingUiState.activeButton, '');
+  mappingActionInputElement.value = '';
+  renderMappingLayout();
   renderCommands();
 });
 
@@ -350,17 +426,23 @@ for (const id of gyroFieldIds) {
 }
 
 bindCurveEditor();
+initMappingPresets();
 
 loadDefaults()
   .then(loadCurrentConfig)
   .then(() => {
     renderCurve();
+    renderMappingLayout();
     renderCommands();
   })
   .catch((error) => {
     statusElement.textContent = `Failed to load defaults: ${error.message}`;
-    addMappingRow('R', 'RMOUSE');
-    addMappingRow('ZR', 'LMOUSE');
+    mappingUiState.mappingMap = {
+      R: 'RMOUSE',
+      ZR: 'LMOUSE',
+    };
+    mappingUiState.activeButton = 'R';
     renderCurve();
+    renderMappingLayout();
     renderCommands();
   });

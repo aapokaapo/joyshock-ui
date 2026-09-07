@@ -55,9 +55,29 @@
 
       <section>
         <h2>Button remaps</h2>
-        <p>Map controller button commands (for example R, L, ZR, CROSS) to actions.</p>
-        <div id="mappings"></div>
-        <button id="addMapping" type="button">Add mapping row</button>
+        <p>DualSense-style mapping view: click a button capsule around the controller to edit its action.</p>
+
+        <div class="mapping-stage" id="mappingStage">
+          <svg id="buttonMappingScene" viewBox="0 0 1000 620" role="img" aria-label="Controller button mapping layout">
+            <g id="mappingLines"></g>
+            <g id="mappingAnchors"></g>
+            <rect class="controller-shell" x="250" y="120" width="500" height="340" rx="170" ry="170"></rect>
+            <rect class="controller-panel" x="430" y="190" width="140" height="120" rx="30" ry="30"></rect>
+            <circle class="controller-stick" cx="400" cy="330" r="45"></circle>
+            <circle class="controller-stick" cx="600" cy="330" r="45"></circle>
+          </svg>
+          <div id="buttonCapsules" class="button-capsules"></div>
+        </div>
+
+        <div class="mapping-editor" id="mappingEditor">
+          <h3 id="mappingEditorTitle">Select a button</h3>
+          <label for="mappingActionInput">Mapped action</label>
+          <input id="mappingActionInput" type="text" placeholder="Example: RMOUSE" />
+
+          <div id="mappingPresetGrid" class="mapping-preset-grid"></div>
+
+          <button id="clearMapping" type="button">Clear mapping</button>
+        </div>
       </section>
 
       <section>
@@ -73,15 +93,8 @@
       <p id="status" role="status"></p>
     </main>
 
-    <template id="mappingTemplate">
-      <div class="mapping-row">
-        <input class="button-name" type="text" placeholder="Button command (e.g. R)" />
-        <input class="button-action" type="text" placeholder="Mapping action (e.g. RMOUSE)" />
-        <button class="remove-mapping" type="button">Remove</button>
-      </div>
-    </template>
-
     <script src="/gyroCurveModel.js"></script>
+    <script src="/buttonMappingModel.js"></script>
     <script src="/app.js"></script>
   </body>
 </html>
