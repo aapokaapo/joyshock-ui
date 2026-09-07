@@ -45,6 +45,52 @@ button {
   cursor: pointer;
 }
 
+.gyro-curve-panel {
+  margin-bottom: 0.75rem;
+  overflow-x: auto;
+}
+
+#gyroCurve {
+  width: 100%;
+  min-width: 420px;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+}
+
+.axis {
+  stroke: #6e7681;
+  stroke-width: 1;
+}
+
+.axis-label {
+  fill: #8b949e;
+  font-size: 12px;
+}
+
+.curve-guide {
+  fill: none;
+  stroke: #30363d;
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+
+.curve-line {
+  stroke: #2f81f7;
+  stroke-width: 3;
+}
+
+.curve-point {
+  fill: #2f81f7;
+  stroke: #e6edf3;
+  stroke-width: 2;
+  cursor: grab;
+}
+
+.curve-point:active {
+  cursor: grabbing;
+}
+
 .mapping-row {
   display: grid;
   grid-template-columns: 1fr 1fr 120px;

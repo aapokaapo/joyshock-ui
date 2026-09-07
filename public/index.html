@@ -19,7 +19,19 @@
 
       <section>
         <h2>Gyro acceleration curve</h2>
-        <p>This editor controls a two-point acceleration curve using JSM settings.</p>
+        <p>Drag the points in the graph to edit threshold and X sensitivity acceleration.</p>
+        <div class="gyro-curve-panel">
+          <svg id="gyroCurve" viewBox="0 0 420 240" role="img" aria-label="Gyroscope acceleration curve editor">
+            <line id="axisX" class="axis" x1="32" y1="208" x2="400" y2="208"></line>
+            <line id="axisY" class="axis" x1="32" y1="208" x2="32" y2="24"></line>
+            <polyline id="curveGuide" class="curve-guide"></polyline>
+            <line id="curveLine" class="curve-line"></line>
+            <circle id="minPoint" class="curve-point" r="8" tabindex="0"></circle>
+            <circle id="maxPoint" class="curve-point" r="8" tabindex="0"></circle>
+            <text id="xMaxLabel" class="axis-label" x="398" y="226" text-anchor="end"></text>
+            <text id="yMaxLabel" class="axis-label" x="8" y="28"></text>
+          </svg>
+        </div>
         <div class="grid">
           <label for="minThreshold">Min threshold</label>
           <input id="minThreshold" type="number" step="0.01" value="0" />
@@ -30,11 +42,11 @@
           <label for="minSensX">Min sens X</label>
           <input id="minSensX" type="number" step="0.01" value="0" />
 
-          <label for="minSensY">Min sens Y</label>
-          <input id="minSensY" type="number" step="0.01" value="0" />
-
           <label for="maxSensX">Max sens X</label>
           <input id="maxSensX" type="number" step="0.01" value="6" />
+
+          <label for="minSensY">Min sens Y</label>
+          <input id="minSensY" type="number" step="0.01" value="0" />
 
           <label for="maxSensY">Max sens Y</label>
           <input id="maxSensY" type="number" step="0.01" value="6" />
@@ -69,6 +81,7 @@
       </div>
     </template>
 
+    <script src="/gyroCurveModel.js"></script>
     <script src="/app.js"></script>
   </body>
 </html>

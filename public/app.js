@@ -4,6 +4,14 @@ const mappingTemplate = document.getElementById('mappingTemplate');
 const commandsPreview = document.getElementById('commandsPreview');
 const statusElement = document.getElementById('status');
 
+const gyroCurveElement = document.getElementById('gyroCurve');
+const curveGuideElement = document.getElementById('curveGuide');
+const curveLineElement = document.getElementById('curveLine');
+const minPointElement = document.getElementById('minPoint');
+const maxPointElement = document.getElementById('maxPoint');
+const xMaxLabelElement = document.getElementById('xMaxLabel');
+const yMaxLabelElement = document.getElementById('yMaxLabel');
+
 const gyroFieldIds = [
   'minThreshold',
   'maxThreshold',
@@ -12,6 +20,13 @@ const gyroFieldIds = [
   'maxSensX',
   'maxSensY',
 ];
+
+const curveState = {
+  dragging: null,
+  width: 420,
+  height: 240,
+  padding: 32,
+};
 
 function rowToCommand(row) {
   const button = row.querySelector('.button-name').value.trim();
@@ -107,6 +122,7 @@ function applyGyroState(gyro) {
       document.getElementById(id).value = gyro[id];
     }
   }
+  renderCurve();
 }
 
 function applyMappingsState(mappings) {
@@ -130,6 +146,119 @@ function applyCurrentConfig(currentConfig) {
   applyGyroState(currentConfig.gyro || {});
   applyMappingsState(currentConfig.mappings || []);
   renderCommands();
+}
+
+function toFieldValue(value) {
+  return String(window.GyroCurveModel.round2(value));
+}
+
+function getCurvePoints() {
+  const state = currentGyroState();
+  const model = window.GyroCurveModel;
+  const bounds = model.computeBounds(state);
+
+  const minPoint = model.valueToPoint(
+    model.toNumber(state.minThreshold, 0),
+    model.toNumber(state.minSensX, 0),
+    bounds,
+    curveState.width,
+    curveState.height,
+    curveState.padding,
+  );
+
+  const maxPoint = model.valueToPoint(
+    model.toNumber(state.maxThreshold, 8),
+    model.toNumber(state.maxSensX, 6),
+    bounds,
+    curveState.width,
+    curveState.height,
+    curveState.padding,
+  );
+
+  return { bounds, minPoint, maxPoint };
+}
+
+function renderCurve() {
+  const { bounds, minPoint, maxPoint } = getCurvePoints();
+
+  curveGuideElement.setAttribute('points', `${curveState.padding},${curveState.height - curveState.padding} ${maxPoint.x},${curveState.height - curveState.padding} ${maxPoint.x},${maxPoint.y}`);
+
+  curveLineElement.setAttribute('x1', minPoint.x);
+  curveLineElement.setAttribute('y1', minPoint.y);
+  curveLineElement.setAttribute('x2', maxPoint.x);
+  curveLineElement.setAttribute('y2', maxPoint.y);
+
+  minPointElement.setAttribute('cx', minPoint.x);
+  minPointElement.setAttribute('cy', minPoint.y);
+  maxPointElement.setAttribute('cx', maxPoint.x);
+  maxPointElement.setAttribute('cy', maxPoint.y);
+
+  xMaxLabelElement.textContent = `threshold max ${window.GyroCurveModel.round2(bounds.xMax)}`;
+  yMaxLabelElement.textContent = `sens max ${window.GyroCurveModel.round2(bounds.yMax)}`;
+}
+
+function pointerToSvgPoint(event) {
+  const rect = gyroCurveElement.getBoundingClientRect();
+  const x = ((event.clientX - rect.left) / rect.width) * curveState.width;
+  const y = ((event.clientY - rect.top) / rect.height) * curveState.height;
+  return { x, y };
+}
+
+function updateCurveFromPointer(event) {
+  if (!curveState.dragging) {
+    return;
+  }
+
+  event.preventDefault();
+
+  const model = window.GyroCurveModel;
+  const state = currentGyroState();
+  const bounds = model.computeBounds(state);
+  const pointer = pointerToSvgPoint(event);
+  const next = model.pointToValue(pointer.x, pointer.y, bounds, curveState.width, curveState.height, curveState.padding);
+
+  const minThresholdInput = document.getElementById('minThreshold');
+  const maxThresholdInput = document.getElementById('maxThreshold');
+  const minSensXInput = document.getElementById('minSensX');
+  const maxSensXInput = document.getElementById('maxSensX');
+
+  if (curveState.dragging === 'min') {
+    const maxThreshold = model.toNumber(maxThresholdInput.value, 8);
+    const maxSens = model.toNumber(maxSensXInput.value, 6);
+
+    minThresholdInput.value = toFieldValue(model.clamp(next.threshold, 0, maxThreshold));
+    minSensXInput.value = toFieldValue(model.clamp(next.sensitivity, 0, maxSens));
+  }
+
+  if (curveState.dragging === 'max') {
+    const minThreshold = model.toNumber(minThresholdInput.value, 0);
+    const minSens = model.toNumber(minSensXInput.value, 0);
+
+    maxThresholdInput.value = toFieldValue(Math.max(minThreshold, next.threshold));
+    maxSensXInput.value = toFieldValue(Math.max(minSens, next.sensitivity));
+  }
+
+  renderCurve();
+  renderCommands();
+}
+
+function stopCurveDrag() {
+  curveState.dragging = null;
+}
+
+function startCurveDrag(pointName) {
+  return (event) => {
+    event.preventDefault();
+    curveState.dragging = pointName;
+  };
+}
+
+function bindCurveEditor() {
+  minPointElement.addEventListener('pointerdown', startCurveDrag('min'));
+  maxPointElement.addEventListener('pointerdown', startCurveDrag('max'));
+  gyroCurveElement.addEventListener('pointermove', updateCurveFromPointer);
+  gyroCurveElement.addEventListener('pointerup', stopCurveDrag);
+  gyroCurveElement.addEventListener('pointerleave', stopCurveDrag);
 }
 
 async function loadDefaults() {
@@ -214,14 +343,24 @@ document.getElementById('apply').addEventListener('click', () => {
 });
 
 for (const id of gyroFieldIds) {
-  document.getElementById(id).addEventListener('input', renderCommands);
+  document.getElementById(id).addEventListener('input', () => {
+    renderCurve();
+    renderCommands();
+  });
 }
+
+bindCurveEditor();
 
 loadDefaults()
   .then(loadCurrentConfig)
+  .then(() => {
+    renderCurve();
+    renderCommands();
+  })
   .catch((error) => {
     statusElement.textContent = `Failed to load defaults: ${error.message}`;
     addMappingRow('R', 'RMOUSE');
     addMappingRow('ZR', 'LMOUSE');
+    renderCurve();
     renderCommands();
   });
