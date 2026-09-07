@@ -10,7 +10,7 @@ const {
   normalizeCommands,
   sendCommandsToSocket,
 } = require('../src/socketClient');
-const { createServer } = require('../src/server');
+const { createServer, getCurrentConfigPath } = require('../src/server');
 
 function request(server, route, method = 'GET', body) {
   const address = server.address();
@@ -88,4 +88,67 @@ test('POST /api/apply validates command input', async () => {
   assert.match(response.body.error, /must not contain newlines/);
 
   await new Promise((resolve) => server.close(resolve));
+});
+
+test('current config can be saved and loaded', async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jsm-ui-config-'));
+  const configPath = path.join(tempDir, 'current-config.json');
+  process.env.JSM_UI_CONFIG_PATH = configPath;
+
+  const server = createServer();
+  await new Promise((resolve) => server.listen(0, resolve));
+
+  const savePayload = {
+    currentConfig: {
+      socketPath: '/run/user/1000/joyshockmapper.sock',
+      gyro: {
+        minThreshold: '0.1',
+        maxThreshold: '6.5',
+        minSensX: '0.2',
+        minSensY: '0.3',
+        maxSensX: '7',
+        maxSensY: '8',
+      },
+      mappings: [
+        { button: 'R', action: 'RMOUSE' },
+        { button: 'ZR', action: 'LMOUSE' },
+      ],
+    },
+  };
+
+  const saveResponse = await request(server, '/api/current-config', 'POST', savePayload);
+  assert.equal(saveResponse.statusCode, 200);
+  assert.equal(saveResponse.body.ok, true);
+
+  const loadResponse = await request(server, '/api/current-config');
+  assert.equal(loadResponse.statusCode, 200);
+  assert.equal(loadResponse.body.ok, true);
+  assert.deepEqual(loadResponse.body.currentConfig, savePayload.currentConfig);
+  assert.equal(getCurrentConfigPath(), configPath);
+
+  await new Promise((resolve) => server.close(resolve));
+  delete process.env.JSM_UI_CONFIG_PATH;
+});
+
+test('saving current config rejects invalid mapping', async () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jsm-ui-config-'));
+  process.env.JSM_UI_CONFIG_PATH = path.join(tempDir, 'current-config.json');
+
+  const server = createServer();
+  await new Promise((resolve) => server.listen(0, resolve));
+
+  const response = await request(server, '/api/current-config', 'POST', {
+    currentConfig: {
+      socketPath: '/tmp/joyshockmapper.sock',
+      gyro: {},
+      mappings: [{ button: 'R\nBAD', action: 'RMOUSE' }],
+    },
+  });
+
+  assert.equal(response.statusCode, 400);
+  assert.equal(response.body.ok, false);
+  assert.match(response.body.error, /must not contain newlines/);
+
+  await new Promise((resolve) => server.close(resolve));
+  delete process.env.JSM_UI_CONFIG_PATH;
 });

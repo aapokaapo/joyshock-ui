@@ -1,5 +1,6 @@
 const http = require('node:http');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const {
   defaultSocketPath,
@@ -8,6 +9,22 @@ const {
 } = require('./socketClient');
 
 const PUBLIC_DIR = path.resolve(__dirname, '..', 'public');
+
+const DEFAULT_CURRENT_CONFIG = {
+  socketPath: '',
+  gyro: {
+    minThreshold: '0',
+    maxThreshold: '8',
+    minSensX: '0',
+    minSensY: '0',
+    maxSensX: '6',
+    maxSensY: '6',
+  },
+  mappings: [
+    { button: 'R', action: 'RMOUSE' },
+    { button: 'ZR', action: 'LMOUSE' },
+  ],
+};
 
 function sendJson(res, statusCode, body) {
   const payload = JSON.stringify(body);
@@ -40,6 +57,105 @@ function readBody(req) {
   });
 }
 
+function toNumericString(value, fallback) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) {
+    return fallback;
+  }
+  return String(num);
+}
+
+function sanitizeToken(value, fieldName) {
+  if (typeof value !== 'string') {
+    throw new Error(`${fieldName} must be a string.`);
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new Error(`${fieldName} cannot be empty.`);
+  }
+  if (trimmed.includes('\n') || trimmed.includes('\r')) {
+    throw new Error(`${fieldName} must not contain newlines.`);
+  }
+  return trimmed;
+}
+
+function normalizeCurrentConfig(currentConfig) {
+  if (!currentConfig || typeof currentConfig !== 'object') {
+    throw new Error('currentConfig must be an object.');
+  }
+
+  const gyro = currentConfig.gyro || {};
+  const mappings = Array.isArray(currentConfig.mappings)
+    ? currentConfig.mappings.map((mapping, index) => {
+      if (!mapping || typeof mapping !== 'object') {
+        throw new Error(`mappings[${index}] must be an object.`);
+      }
+
+      return {
+        button: sanitizeToken(mapping.button, `mappings[${index}].button`),
+        action: sanitizeToken(mapping.action, `mappings[${index}].action`),
+      };
+    })
+    : [];
+
+  return {
+    socketPath:
+      typeof currentConfig.socketPath === 'string' ? currentConfig.socketPath.trim() : '',
+    gyro: {
+      minThreshold: toNumericString(gyro.minThreshold, DEFAULT_CURRENT_CONFIG.gyro.minThreshold),
+      maxThreshold: toNumericString(gyro.maxThreshold, DEFAULT_CURRENT_CONFIG.gyro.maxThreshold),
+      minSensX: toNumericString(gyro.minSensX, DEFAULT_CURRENT_CONFIG.gyro.minSensX),
+      minSensY: toNumericString(gyro.minSensY, DEFAULT_CURRENT_CONFIG.gyro.minSensY),
+      maxSensX: toNumericString(gyro.maxSensX, DEFAULT_CURRENT_CONFIG.gyro.maxSensX),
+      maxSensY: toNumericString(gyro.maxSensY, DEFAULT_CURRENT_CONFIG.gyro.maxSensY),
+    },
+    mappings,
+  };
+}
+
+function getCurrentConfigPath() {
+  if (process.env.JSM_UI_CONFIG_PATH && process.env.JSM_UI_CONFIG_PATH.trim()) {
+    return process.env.JSM_UI_CONFIG_PATH.trim();
+  }
+
+  const base =
+    process.env.XDG_CONFIG_HOME && process.env.XDG_CONFIG_HOME.trim()
+      ? process.env.XDG_CONFIG_HOME.trim()
+      : path.join(os.homedir(), '.config');
+
+  return path.join(base, 'joyshock-ui', 'current-config.json');
+}
+
+function getDefaultCurrentConfig() {
+  return {
+    ...DEFAULT_CURRENT_CONFIG,
+    socketPath: defaultSocketPath(),
+  };
+}
+
+function readCurrentConfig() {
+  const filePath = getCurrentConfigPath();
+
+  try {
+    const content = fs.readFileSync(filePath, 'utf8');
+    const parsed = JSON.parse(content);
+    return normalizeCurrentConfig(parsed);
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return getDefaultCurrentConfig();
+    }
+    throw error;
+  }
+}
+
+function writeCurrentConfig(currentConfig) {
+  const normalized = normalizeCurrentConfig(currentConfig);
+  const filePath = getCurrentConfigPath();
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, `${JSON.stringify(normalized, null, 2)}\n`, 'utf8');
+  return normalized;
+}
+
 function createServer() {
   return http.createServer(async (req, res) => {
     if (!req.url) {
@@ -51,6 +167,28 @@ function createServer() {
 
     if (req.method === 'GET' && url.pathname === '/api/config') {
       sendJson(res, 200, { defaultSocketPath: defaultSocketPath() });
+      return;
+    }
+
+    if (req.method === 'GET' && url.pathname === '/api/current-config') {
+      try {
+        const currentConfig = readCurrentConfig();
+        sendJson(res, 200, { ok: true, currentConfig });
+      } catch (error) {
+        sendJson(res, 500, { ok: false, error: error.message });
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && url.pathname === '/api/current-config') {
+      try {
+        const rawBody = await readBody(req);
+        const parsed = rawBody ? JSON.parse(rawBody) : {};
+        const currentConfig = writeCurrentConfig(parsed.currentConfig || parsed);
+        sendJson(res, 200, { ok: true, currentConfig });
+      } catch (error) {
+        sendJson(res, 400, { ok: false, error: error.message });
+      }
       return;
     }
 
@@ -119,4 +257,6 @@ if (require.main === module) {
 module.exports = {
   createServer,
   startServer,
+  normalizeCurrentConfig,
+  getCurrentConfigPath,
 };

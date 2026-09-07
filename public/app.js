@@ -24,6 +24,17 @@ function rowToCommand(row) {
   return `${button} = ${action}`;
 }
 
+function rowToMapping(row) {
+  const button = row.querySelector('.button-name').value.trim();
+  const action = row.querySelector('.button-action').value.trim();
+
+  if (!button || !action) {
+    return null;
+  }
+
+  return { button, action };
+}
+
 function gyroCommands() {
   const minThreshold = document.getElementById('minThreshold').value;
   const maxThreshold = document.getElementById('maxThreshold').value;
@@ -65,10 +76,97 @@ function addMappingRow(button = '', action = '') {
   mappingsElement.appendChild(fragment);
 }
 
+function currentGyroState() {
+  return {
+    minThreshold: document.getElementById('minThreshold').value,
+    maxThreshold: document.getElementById('maxThreshold').value,
+    minSensX: document.getElementById('minSensX').value,
+    minSensY: document.getElementById('minSensY').value,
+    maxSensX: document.getElementById('maxSensX').value,
+    maxSensY: document.getElementById('maxSensY').value,
+  };
+}
+
+function currentMappingsState() {
+  return [...mappingsElement.querySelectorAll('.mapping-row')]
+    .map(rowToMapping)
+    .filter(Boolean);
+}
+
+function collectCurrentConfig() {
+  return {
+    socketPath: socketPathInput.value.trim(),
+    gyro: currentGyroState(),
+    mappings: currentMappingsState(),
+  };
+}
+
+function applyGyroState(gyro) {
+  for (const id of gyroFieldIds) {
+    if (Object.hasOwn(gyro, id)) {
+      document.getElementById(id).value = gyro[id];
+    }
+  }
+}
+
+function applyMappingsState(mappings) {
+  mappingsElement.innerHTML = '';
+
+  if (!Array.isArray(mappings) || mappings.length === 0) {
+    addMappingRow();
+    return;
+  }
+
+  for (const mapping of mappings) {
+    addMappingRow(mapping.button, mapping.action);
+  }
+}
+
+function applyCurrentConfig(currentConfig) {
+  if (currentConfig.socketPath) {
+    socketPathInput.value = currentConfig.socketPath;
+  }
+
+  applyGyroState(currentConfig.gyro || {});
+  applyMappingsState(currentConfig.mappings || []);
+  renderCommands();
+}
+
 async function loadDefaults() {
   const response = await fetch('/api/config');
   const config = await response.json();
   socketPathInput.value = config.defaultSocketPath;
+}
+
+async function loadCurrentConfig() {
+  statusElement.textContent = 'Loading current config...';
+  const response = await fetch('/api/current-config');
+  const result = await response.json();
+
+  if (!response.ok || !result.ok) {
+    throw new Error(result.error || 'Failed to load current config.');
+  }
+
+  applyCurrentConfig(result.currentConfig);
+  statusElement.textContent = 'Loaded current config.';
+}
+
+async function saveCurrentConfig() {
+  statusElement.textContent = 'Saving current config...';
+
+  const response = await fetch('/api/current-config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ currentConfig: collectCurrentConfig() }),
+  });
+
+  const result = await response.json();
+  if (!response.ok || !result.ok) {
+    throw new Error(result.error || 'Failed to save current config.');
+  }
+
+  applyCurrentConfig(result.currentConfig);
+  statusElement.textContent = 'Saved current config.';
 }
 
 async function applyConfig() {
@@ -97,6 +195,18 @@ document.getElementById('addMapping').addEventListener('click', () => {
   renderCommands();
 });
 
+document.getElementById('loadCurrentConfig').addEventListener('click', () => {
+  loadCurrentConfig().catch((error) => {
+    statusElement.textContent = `Failed: ${error.message}`;
+  });
+});
+
+document.getElementById('saveCurrentConfig').addEventListener('click', () => {
+  saveCurrentConfig().catch((error) => {
+    statusElement.textContent = `Failed: ${error.message}`;
+  });
+});
+
 document.getElementById('apply').addEventListener('click', () => {
   applyConfig().catch((error) => {
     statusElement.textContent = `Failed: ${error.message}`;
@@ -107,12 +217,11 @@ for (const id of gyroFieldIds) {
   document.getElementById(id).addEventListener('input', renderCommands);
 }
 
-addMappingRow('R', 'RMOUSE');
-addMappingRow('ZR', 'LMOUSE');
-
 loadDefaults()
-  .then(renderCommands)
+  .then(loadCurrentConfig)
   .catch((error) => {
     statusElement.textContent = `Failed to load defaults: ${error.message}`;
+    addMappingRow('R', 'RMOUSE');
+    addMappingRow('ZR', 'LMOUSE');
     renderCommands();
   });
