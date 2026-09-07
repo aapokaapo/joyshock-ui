@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>JoyShockMapper UI</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main>
+      <h1>JoyShockMapper Socket UI</h1>
+      <p>Apply gyro acceleration and button remaps to the running systemd service.</p>
+
+      <section>
+        <h2>Socket connection</h2>
+        <label for="socketPath">Socket path</label>
+        <input id="socketPath" type="text" />
+      </section>
+
+      <section>
+        <h2>Gyro acceleration curve</h2>
+        <p>This editor controls a two-point acceleration curve using JSM settings.</p>
+        <div class="grid">
+          <label for="minThreshold">Min threshold</label>
+          <input id="minThreshold" type="number" step="0.01" value="0" />
+
+          <label for="maxThreshold">Max threshold</label>
+          <input id="maxThreshold" type="number" step="0.01" value="8" />
+
+          <label for="minSensX">Min sens X</label>
+          <input id="minSensX" type="number" step="0.01" value="0" />
+
+          <label for="minSensY">Min sens Y</label>
+          <input id="minSensY" type="number" step="0.01" value="0" />
+
+          <label for="maxSensX">Max sens X</label>
+          <input id="maxSensX" type="number" step="0.01" value="6" />
+
+          <label for="maxSensY">Max sens Y</label>
+          <input id="maxSensY" type="number" step="0.01" value="6" />
+        </div>
+      </section>
+
+      <section>
+        <h2>Button remaps</h2>
+        <p>Map controller button commands (for example R, L, ZR, CROSS) to actions.</p>
+        <div id="mappings"></div>
+        <button id="addMapping" type="button">Add mapping row</button>
+      </section>
+
+      <section>
+        <h2>Generated commands</h2>
+        <textarea id="commandsPreview" rows="10" readonly></textarea>
+        <button id="apply" type="button">Apply to JoyShockMapper</button>
+      </section>
+
+      <p id="status" role="status"></p>
+    </main>
+
+    <template id="mappingTemplate">
+      <div class="mapping-row">
+        <input class="button-name" type="text" placeholder="Button command (e.g. R)" />
+        <input class="button-action" type="text" placeholder="Mapping action (e.g. RMOUSE)" />
+        <button class="remove-mapping" type="button">Remove</button>
+      </div>
+    </template>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
