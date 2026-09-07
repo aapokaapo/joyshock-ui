@@ -150,7 +150,16 @@ function renderButtonCapsules() {
     capsule.style.left = `${(button.cap[0] / window.ButtonMappingModel.STAGE.width) * 100}%`;
     capsule.style.top = `${(button.cap[1] / window.ButtonMappingModel.STAGE.height) * 100}%`;
 
-    capsule.innerHTML = `<span class="source">${button.label}</span><span class="target">${mapped}</span>`;
+    const sourceSpan = document.createElement('span');
+    sourceSpan.className = 'source';
+    sourceSpan.textContent = button.label;
+
+    const targetSpan = document.createElement('span');
+    targetSpan.className = 'target';
+    targetSpan.textContent = mapped;
+
+    capsule.appendChild(sourceSpan);
+    capsule.appendChild(targetSpan);
     capsule.addEventListener('click', () => {
       selectMappingButton(button.id);
       renderCommands();
